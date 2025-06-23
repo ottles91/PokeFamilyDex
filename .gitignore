@@ -11,3 +11,6 @@ DerivedData/
 
 # SwiftPM
 .build/
+
+# Text files
+*.txt
