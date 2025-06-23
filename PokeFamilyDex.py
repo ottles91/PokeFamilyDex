@@ -37,6 +37,8 @@ def display_name(name):
         "mr-mime": "Mr. Mime",
         "mr-mime-galar": "Mr. Mime (Galar)",
         "mr-rime": "Mr. Rime",
+        "type-null": "Type: Null",
+        "ho-oh": "Ho-Oh"
     }
     if name in special_cases:
         return special_cases[name]
