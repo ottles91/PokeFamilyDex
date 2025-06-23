@@ -1,0 +1,13 @@
+# macOS system files
+.DS_Store
+
+# VSCode settings
+.vscode/
+
+# Xcode
+*.xcworkspace
+*.xcodeproj
+DerivedData/
+
+# SwiftPM
+.build/
