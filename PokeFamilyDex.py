@@ -48,8 +48,23 @@ def group_by_stage(chain_node, stage=0, stages=None):
 
 def format_family(stages):
     output = []
+
+    def get_dex_number(pokemon_name):
+        url = f"{API_BASE}pokemon-species/{pokemon_name}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            for entry in data["pokedex_numbers"]:
+                if entry["pokedex"]["name"] == "national":
+                    return entry["entry_number"]
+        except Exception as e:
+            print(f"Warning: couldn't fetch Dex number for {pokemon_name}: {e}")
+        return float("inf")
+
     for stage in sorted(stages.keys()):
-        forms = sorted(stages[stage])
+        forms = stages[stage]
+        forms.sort(key=lambda name: get_dex_number(name))
         if len(forms) == 1:
             output.append(forms[0])
         else:
