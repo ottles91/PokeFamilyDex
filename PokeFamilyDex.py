@@ -3,6 +3,7 @@ import time
 import json
 import os
 from collections import defaultdict
+import re
 
 CACHE_FILE = "species_cache.json"
 VARIANT_CACHE_FILE = "variant_cache.json"
@@ -27,6 +28,38 @@ if os.path.exists(VARIANT_CACHE_FILE):
         except json.JSONDecodeError:
             variant_cache = {}
 
+def normalize_species_name(name):
+    """
+    Strip known suffixes (like '-alola', '-totem', '-galar') from a Pokémon form name
+    so we can fetch the correct dex number from the base species endpoint.
+    """
+    # Handles things like: raticate-totem-alola -> raticate
+    # Strip everything after first known suffix
+    suffixes = [
+        "-alola", "-galar", "-hisui", "-hisuian", "-paldea",
+        "-totem", "-white-striped", "-red-striped", "-blue-striped",
+        "-mega", "-gmax", "-three-segment", "-rainy", "-sunny", "-snowy", 
+        "-primal", "-defense", "-speed", "-attack", "-sandy", "-trash",
+        "-mow", "-frost", "-heat", "-wash", "-fan", "-origin", "-sky", 
+        "-female", "-zen", "therian", "-black", "-white", "-resolute",
+        "-pirouette","-battle-bond", "-ash", "-eternal", "-blade",
+        "-small", "-super", "-large", "-complete", "-50-power-construct",
+        "-10-power-construct", "-unbound", "-pom-pom", "-sensu", "-pau"
+        "-own-tempo", "-midnight", "-dusk", "-school", "-green", "-orange-meteor",
+        "-indigo", "-red", "-blue-meteor", "-violet-meteor", "-indigo-meteor", 
+        "-orange", "-yellow", "-blue", "-yellow-meteor", "-green-meteor",
+        "-minior-violet", "-busted", "-dawn", "-ultra", "-original", "-gorging",
+        "-gulping", "-low-key", "-noice", "-hangry", "-crowned", "-eternamax",
+        "-rapid-strike", "-dada", "-shadow", -"ice", "-family-of-three", 
+        "-white-plumage", "-yellow-plumage", "-blue-plumage", "-hero",
+        "-droopy", "-stretchy", "-roaming", "-sprinting-build", "gliding-build",
+        "-limited-build", "-swimming-build", "-glide-mode", "-dive-mode",
+        "-aquatic-mode", "-low-power-mode", "-hearthflame-mask", "-wellspring-mask",
+        "-cornerstone-mask", "-stellar", "-terastal"
+    ]
+    pattern = re.compile(f"({'|'.join(suffixes)})")
+    return pattern.split(name)[0]
+
 def get_all_evolution_chains():
     url = f"{API_BASE}evolution-chain/?limit=9999"
     response = requests.get(url)
@@ -37,7 +70,11 @@ def get_species_dex_number(species_url=None, species_name=None):
     if species_name:
         if species_name in species_cache:
             return species_cache[species_name]
-        url = f"{API_BASE}pokemon-species/{species_name}"
+
+        # Normalize to base name for species lookup
+        normalized_name = normalize_species_name(species_name)
+
+        url = f"{API_BASE}pokemon-species/{normalized_name}"
     elif species_url:
         species_name = species_url.rstrip('/').split("/")[-1]
         if species_name in species_cache:
@@ -61,7 +98,6 @@ def get_species_dex_number(species_url=None, species_name=None):
     return float("inf")
 
 def get_variants(species_name):
-    """Returns alternate forms like alolan/galarian variants"""
     if species_name in variant_cache:
         return set(variant_cache[species_name])
 
@@ -73,11 +109,25 @@ def get_variants(species_name):
     variants = set()
     for variety in data["varieties"]:
         name = variety["pokemon"]["name"]
-        if not variety["is_default"]:
-            if any(region in name for region in ["alolan", "galarian", "hisuian", "paldean"]):
-                variants.add(name)
 
-    # Save to in-memory cache
+        if not variety["is_default"]:
+            # Skip non-boxable forms
+            if (
+                "-mega" in name or
+                "-gmax" in name or
+                "-cap" in name or
+                "-belle" in name or
+                "-phd" in name or
+                "-rock-star" in name or
+                "-libre" in name or
+                "-pop-star" in name or
+                "-cosplay" in name or
+                "-starter" in name
+            ):
+                continue
+
+            variants.add(name)
+
     variant_cache[species_name] = list(variants)
     return variants
 
@@ -96,9 +146,17 @@ def group_by_stage(chain_node, stage=0, stages=None):
 def format_family(stages):
     output = []
 
+    def sort_key(name):
+        # Base name comes first
+        region_order = ["", "alolan", "galarian", "hisuian", "paldean", "white", "black", "red", "blue", "striped"]
+        for i, region in enumerate(region_order):
+            if name.startswith(region + "-"):
+                return (i, get_species_dex_number(species_name=name))
+        return (len(region_order), get_species_dex_number(species_name=name))
+
     for stage in sorted(stages.keys()):
-        forms = stages[stage]
-        forms.sort(key=lambda name: get_species_dex_number(species_name=name))
+        forms = list(set(stages[stage]))  # de-dupe just in case
+        forms.sort(key=sort_key)
         if len(forms) == 1:
             output.append(forms[0])
         else:
