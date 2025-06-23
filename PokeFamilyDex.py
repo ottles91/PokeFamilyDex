@@ -28,6 +28,55 @@ if os.path.exists(VARIANT_CACHE_FILE):
         except json.JSONDecodeError:
             variant_cache = {}
 
+def display_name(name):
+    # Explicit overrides
+    special_cases = {
+        "nidoran-f": "Nidoran♀",
+        "nidoran-m": "Nidoran♂",
+        "mime-jr": "Mime Jr",
+        "mr-mime": "Mr. Mime",
+        "mr-mime-galar": "Mr. Mime (Galar)",
+        "mr-rime": "Mr. Rime",
+    }
+    if name in special_cases:
+        return special_cases[name]
+
+    # Paradox & Tapus & Treasures of Ruin: two-word proper names
+    double_word_prefixes = {
+        "tapu", "great", "scream", "brute", "flutter", "slither", "sandy",
+        "iron", "wo", "chien", "ting", "chi", "roaring", "walking", "gouging", "raging"
+    }
+
+    parts = name.split("-")
+
+    # Tauros (Paldea form handling)
+    if name.startswith("tauros-paldea"):
+        breed = " ".join(p.capitalize() for p in parts[2:-1] + [parts[-1]])
+        return f"Tauros (Paldea {breed})"
+
+    # Jangmo-o, Hakamo-o, Kommo-o (preserve hyphen unless followed by a suffix like -totem)
+    if name.startswith(("jangmo-o", "hakamo-o", "kommo-o")):
+        if name.endswith("-totem"):
+            base = name.rsplit("-totem", 1)[0].replace("-", "-").capitalize()
+            return f"{base} (Totem)"
+        return name.replace("-", "-").capitalize()
+
+    # Two-word proper names
+    if parts[0] in double_word_prefixes and len(parts) >= 2:
+        base_name = " ".join(p.capitalize() for p in parts[:2])
+        suffix = parts[2:]  # e.g. "galar", "totem"
+        if suffix:
+            form = " ".join(p.capitalize() for p in suffix)
+            return f"{base_name} ({form})"
+        return base_name
+
+    # Fallback: Base name + form in parens
+    base = parts[0].capitalize()
+    if len(parts) == 1:
+        return base
+    form = " ".join(p.capitalize() for p in parts[1:])
+    return f"{base} ({form})"
+
 def normalize_species_name(name):
     """
     Strip known suffixes (like '-alola', '-totem', '-galar') from a Pokémon form name
@@ -226,7 +275,7 @@ def main():
             dex_num, species_list = get_sorted_family(chain["url"])
             all_species.append((dex_num, species_list))
             for species in species_list:
-                print(species)
+                print(display_name(species))
             time.sleep(0.2)  # Be kind to the API
         except Exception as e:
             print(f"[{i}/{len(chains)}] Error: {e}")
@@ -238,7 +287,7 @@ def main():
     with open("pokedex_by_family.txt", "w") as f:
         for _, species_list in all_species:
             for species in species_list:
-                f.write(species + "\n")
+                f.write(display_name(species) + "\n")
 
     # Save caches
     with open(CACHE_FILE, "w") as f:
