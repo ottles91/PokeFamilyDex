@@ -1,10 +1,21 @@
 import requests
 import time
+import json
+import os
 from collections import defaultdict
 
+CACHE_FILE = "species_cache.json"
 API_BASE = "https://pokeapi.co/api/v2/"
 
 species_cache = {}
+
+# Load cache from file if it exists
+if os.path.exists(CACHE_FILE):
+    with open(CACHE_FILE, "r") as f:
+        try:
+            species_cache = json.load(f)
+        except json.JSONDecodeError:
+            species_cache = {}
 
 def get_all_evolution_chains():
     url = f"{API_BASE}evolution-chain/?limit=9999"
@@ -13,13 +24,11 @@ def get_all_evolution_chains():
     return response.json()["results"]
 
 def get_species_dex_number(species_url=None, species_name=None):
-    """Fetches and caches national dex number, using either name or URL"""
     if species_name:
         if species_name in species_cache:
             return species_cache[species_name]
         url = f"{API_BASE}pokemon-species/{species_name}"
     elif species_url:
-        # Try to extract name from URL to cache
         species_name = species_url.rstrip('/').split("/")[-1]
         if species_name in species_cache:
             return species_cache[species_name]
@@ -36,7 +45,7 @@ def get_species_dex_number(species_url=None, species_name=None):
                 species_cache[species_name] = entry["entry_number"]
                 return entry["entry_number"]
     except Exception as e:
-        print(f"Warning: could not fetch dex number for {species_name or species_url}: {e}")
+        print(f"Warning: could not fetch dex number for {species_name}: {e}")
 
     species_cache[species_name] = float("inf")
     return float("inf")
@@ -121,6 +130,10 @@ def main():
         for _, line in all_families:
             f.write(line + "\n")
 
+    # Save updated species_cache
+    with open(CACHE_FILE, "w") as f:
+        json.dump(species_cache, f)
+        
     print("\n✅ Saved to pokedex_by_family.txt")
 
 if __name__ == "__main__":
