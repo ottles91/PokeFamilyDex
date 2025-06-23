@@ -143,72 +143,107 @@ def group_by_stage(chain_node, stage=0, stages=None):
 
     return stages
 
-def format_family(stages):
-    output = []
+def get_form_sort_key(name):
+    region_priority = {
+        "": 0,
+        "alola": 1,
+        "galar": 2,
+        "hisui": 3,
+        "paldea": 4,
+        "white-striped": 5,
+        "blue-striped": 6,
+        "red-striped": 7,
+        "totem": 8
+    }
 
-    def sort_key(name):
-        # Base name comes first
-        region_order = ["", "alolan", "galarian", "hisuian", "paldean", "white", "black", "red", "blue", "striped"]
-        for i, region in enumerate(region_order):
-            if name.startswith(region + "-"):
-                return (i, get_species_dex_number(species_name=name))
-        return (len(region_order), get_species_dex_number(species_name=name))
+    parts = name.split("-")
+    base = parts[0]
+    region = "-".join(parts[1:]) if len(parts) > 1 else ""
+
+    # Special handling for perrserker (it's galarian meowth's evolution, not literally named "galarian-perrserker")
+    if name == "perrserker":
+        region = "galar"
+
+    if region in region_priority:
+        priority = region_priority[region]
+    else:
+        priority = 99
+
+    dex = get_species_dex_number(species_name=name)
+    return (priority, dex, name)
+
+
+def format_family(stages):
+    flat_list = []
 
     for stage in sorted(stages.keys()):
-        forms = list(set(stages[stage]))  # de-dupe just in case
-        forms.sort(key=sort_key)
-        if len(forms) == 1:
-            output.append(forms[0])
-        else:
-            output.append(" / ".join(forms))
-    return " > ".join(output)
+        forms = list(set(stages[stage]))
+        forms.sort(key=get_form_sort_key)
+        flat_list.extend(forms)
 
-def get_sorted_family(chain_url):
-    response = requests.get(chain_url)
+    return flat_list
+
+def parse_evolution_chain(url):
+    response = requests.get(url)
     response.raise_for_status()
-    chain_data = response.json()["chain"]
-    stages = group_by_stage(chain_data)
+    chain = response.json()["chain"]
 
-    # Add variants to each stage
-    for stage in list(stages.keys()):
-        extra_forms = set()
-        for name in stages[stage]:
-            extra_forms.update(get_variants(name))
-        stages[stage].extend(extra_forms)
+    stages = {}
+    queue = [(chain, 0)]  # (node, stage)
 
-    # Get Dex number for sorting
-    base_species_url = chain_data["species"]["url"]
-    dex_num = get_species_dex_number(base_species_url)
+    while queue:
+        node, stage = queue.pop(0)
+        name = node["species"]["name"]
 
-    return dex_num, format_family(stages)
+        if stage not in stages:
+            stages[stage] = []
+
+        stages[stage].append(name)
+
+        # Add variants of this species
+        variants = get_variants(name)
+        stages[stage].extend(variants)
+
+        for evo in node.get("evolves_to", []):
+            queue.append((evo, stage + 1))
+
+    return stages
+
+def get_sorted_family(url):
+    stages = parse_evolution_chain(url)
+    flattened = format_family(stages)
+    dex_number = get_species_dex_number(species_name=flattened[0])
+    return dex_number, flattened
 
 def main():
     chains = get_all_evolution_chains()
-    all_families = []
+    all_species = []
 
     print(f"Found {len(chains)} evolution chains...\n")
 
     for i, chain in enumerate(chains, start=1):
         try:
-            dex_num, family_str = get_sorted_family(chain["url"])
-            all_families.append((dex_num, family_str))
-            print(f"[{i}/{len(chains)}] {family_str}")
+            dex_num, species_list = get_sorted_family(chain["url"])
+            all_species.append((dex_num, species_list))
+            for species in species_list:
+                print(species)
             time.sleep(0.2)  # Be kind to the API
         except Exception as e:
             print(f"[{i}/{len(chains)}] Error: {e}")
 
-    # Sort by National Dex number
-    all_families.sort(key=lambda x: x[0])
+    # Sort by National Dex number of base species
+    all_species.sort(key=lambda x: x[0])
 
+    # Flatten and write to file
     with open("pokedex_by_family.txt", "w") as f:
-        for _, line in all_families:
-            f.write(line + "\n")
+        for _, species_list in all_species:
+            for species in species_list:
+                f.write(species + "\n")
 
-    # Save updated species_cache
+    # Save caches
     with open(CACHE_FILE, "w") as f:
         json.dump(species_cache, f)
 
-    # Save updated variant cache
     with open(VARIANT_CACHE_FILE, "w") as f:
         json.dump(variant_cache, f)
 
