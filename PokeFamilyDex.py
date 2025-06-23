@@ -4,19 +4,41 @@ from collections import defaultdict
 
 API_BASE = "https://pokeapi.co/api/v2/"
 
+species_cache = {}
+
 def get_all_evolution_chains():
     url = f"{API_BASE}evolution-chain/?limit=9999"
     response = requests.get(url)
     response.raise_for_status()
     return response.json()["results"]
 
-def get_species_dex_number(species_url):
-    response = requests.get(species_url)
-    response.raise_for_status()
-    data = response.json()
-    for entry in data["pokedex_numbers"]:
-        if entry["pokedex"]["name"] == "national":
-            return entry["entry_number"]
+def get_species_dex_number(species_url=None, species_name=None):
+    """Fetches and caches national dex number, using either name or URL"""
+    if species_name:
+        if species_name in species_cache:
+            return species_cache[species_name]
+        url = f"{API_BASE}pokemon-species/{species_name}"
+    elif species_url:
+        # Try to extract name from URL to cache
+        species_name = species_url.rstrip('/').split("/")[-1]
+        if species_name in species_cache:
+            return species_cache[species_name]
+        url = species_url
+    else:
+        return float("inf")
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        for entry in data["pokedex_numbers"]:
+            if entry["pokedex"]["name"] == "national":
+                species_cache[species_name] = entry["entry_number"]
+                return entry["entry_number"]
+    except Exception as e:
+        print(f"Warning: could not fetch dex number for {species_name or species_url}: {e}")
+
+    species_cache[species_name] = float("inf")
     return float("inf")
 
 def get_variants(species_name):
@@ -49,22 +71,9 @@ def group_by_stage(chain_node, stage=0, stages=None):
 def format_family(stages):
     output = []
 
-    def get_dex_number(pokemon_name):
-        url = f"{API_BASE}pokemon-species/{pokemon_name}"
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            data = response.json()
-            for entry in data["pokedex_numbers"]:
-                if entry["pokedex"]["name"] == "national":
-                    return entry["entry_number"]
-        except Exception as e:
-            print(f"Warning: couldn't fetch Dex number for {pokemon_name}: {e}")
-        return float("inf")
-
     for stage in sorted(stages.keys()):
         forms = stages[stage]
-        forms.sort(key=lambda name: get_dex_number(name))
+        forms.sort(key=lambda name: get_species_dex_number(species_name=name))
         if len(forms) == 1:
             output.append(forms[0])
         else:
