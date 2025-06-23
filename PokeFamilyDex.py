@@ -5,9 +5,11 @@ import os
 from collections import defaultdict
 
 CACHE_FILE = "species_cache.json"
+VARIANT_CACHE_FILE = "variant_cache.json"
 API_BASE = "https://pokeapi.co/api/v2/"
 
 species_cache = {}
+variant_cache = {}
 
 # Load cache from file if it exists
 if os.path.exists(CACHE_FILE):
@@ -16,6 +18,14 @@ if os.path.exists(CACHE_FILE):
             species_cache = json.load(f)
         except json.JSONDecodeError:
             species_cache = {}
+            
+# Load variant cache if available
+if os.path.exists(VARIANT_CACHE_FILE):
+    with open(VARIANT_CACHE_FILE, "r") as f:
+        try:
+            variant_cache = json.load(f)
+        except json.JSONDecodeError:
+            variant_cache = {}
 
 def get_all_evolution_chains():
     url = f"{API_BASE}evolution-chain/?limit=9999"
@@ -52,6 +62,9 @@ def get_species_dex_number(species_url=None, species_name=None):
 
 def get_variants(species_name):
     """Returns alternate forms like alolan/galarian variants"""
+    if species_name in variant_cache:
+        return set(variant_cache[species_name])
+
     url = f"{API_BASE}pokemon-species/{species_name}"
     response = requests.get(url)
     response.raise_for_status()
@@ -63,6 +76,9 @@ def get_variants(species_name):
         if not variety["is_default"]:
             if any(region in name for region in ["alolan", "galarian", "hisuian", "paldean"]):
                 variants.add(name)
+
+    # Save to in-memory cache
+    variant_cache[species_name] = list(variants)
     return variants
 
 def group_by_stage(chain_node, stage=0, stages=None):
@@ -133,7 +149,11 @@ def main():
     # Save updated species_cache
     with open(CACHE_FILE, "w") as f:
         json.dump(species_cache, f)
-        
+
+    # Save updated variant cache
+    with open(VARIANT_CACHE_FILE, "w") as f:
+        json.dump(variant_cache, f)
+
     print("\n✅ Saved to pokedex_by_family.txt")
 
 if __name__ == "__main__":
