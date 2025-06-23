@@ -1,5 +1,6 @@
 import requests
 import time
+from collections import defaultdict
 
 API_BASE = "https://pokeapi.co/api/v2/"
 
@@ -18,52 +19,61 @@ def get_species_dex_number(species_url):
             return entry["entry_number"]
     return float("inf")
 
-def traverse_evolution_chain(chain_node):
-    species_name = chain_node["species"]["name"]
-    evolutions = chain_node["evolves_to"]
-    if not evolutions:
-        return [[species_name]]
-    all_branches = []
-    for evo in evolutions:
-        subpaths = traverse_evolution_chain(evo)
-        for path in subpaths:
-            all_branches.append([species_name] + path)
-    return all_branches
-
-def get_species_variants(species_name):
-    """Returns other box-storable variants like Alolan or Galarian forms"""
+def get_variants(species_name):
+    """Returns alternate forms like alolan/galarian variants"""
     url = f"{API_BASE}pokemon-species/{species_name}"
     response = requests.get(url)
     response.raise_for_status()
-    species_data = response.json()
-    
+    data = response.json()
+
     variants = set()
-    for variety in species_data["varieties"]:
-        poke_name = variety["pokemon"]["name"]
+    for variety in data["varieties"]:
+        name = variety["pokemon"]["name"]
         if not variety["is_default"]:
-            # Check if it's a HOME-storable form (e.g., alolan-raichu)
-            if any(region in poke_name for region in ["alolan", "galarian", "hisuian", "paldean"]):
-                variants.add(poke_name)
+            if any(region in name for region in ["alolan", "galarian", "hisuian", "paldean"]):
+                variants.add(name)
     return variants
+
+def group_by_stage(chain_node, stage=0, stages=None):
+    if stages is None:
+        stages = defaultdict(list)
+
+    name = chain_node["species"]["name"]
+    stages[stage].append(name)
+
+    for evo in chain_node["evolves_to"]:
+        group_by_stage(evo, stage + 1, stages)
+
+    return stages
+
+def format_family(stages):
+    output = []
+    for stage in sorted(stages.keys()):
+        forms = sorted(stages[stage])
+        if len(forms) == 1:
+            output.append(forms[0])
+        else:
+            output.append(" / ".join(forms))
+    return " > ".join(output)
 
 def get_sorted_family(chain_url):
     response = requests.get(chain_url)
     response.raise_for_status()
     chain_data = response.json()["chain"]
-    family_paths = traverse_evolution_chain(chain_data)
+    stages = group_by_stage(chain_data)
 
-    # Get all species and regional variants
-    flat_species = set()
-    for path in family_paths:
-        flat_species.update(path)
-    for name in list(flat_species):
-        flat_species.update(get_species_variants(name))
+    # Add variants to each stage
+    for stage in list(stages.keys()):
+        extra_forms = set()
+        for name in stages[stage]:
+            extra_forms.update(get_variants(name))
+        stages[stage].extend(extra_forms)
 
     # Get Dex number for sorting
-    base_species = chain_data["species"]["url"]
-    dex_num = get_species_dex_number(base_species)
+    base_species_url = chain_data["species"]["url"]
+    dex_num = get_species_dex_number(base_species_url)
 
-    return dex_num, sorted(flat_species, key=lambda x: x)
+    return dex_num, format_family(stages)
 
 def main():
     chains = get_all_evolution_chains()
@@ -73,29 +83,21 @@ def main():
 
     for i, chain in enumerate(chains, start=1):
         try:
-            dex_num, family = get_sorted_family(chain["url"])
-            all_families.append((dex_num, family))
-
-            # Real-time feedback
-            display_name = " > ".join(family[:-1]) + f" / {family[-1]}" if len(family) > 1 else family[0]
-            print(f"[{i}/{len(chains)}] {display_name}")
-            
-            time.sleep(0.2)  # Be polite to the API
+            dex_num, family_str = get_sorted_family(chain["url"])
+            all_families.append((dex_num, family_str))
+            print(f"[{i}/{len(chains)}] {family_str}")
+            time.sleep(0.2)  # Be kind to the API
         except Exception as e:
-            print(f"[{i}/{len(chains)}] Error processing chain {chain['url']}: {e}")
+            print(f"[{i}/{len(chains)}] Error: {e}")
 
-    # Sort and write to file
-    all_families.sort(key=lambda tup: tup[0])
+    # Sort by National Dex number
+    all_families.sort(key=lambda x: x[0])
 
     with open("pokedex_by_family.txt", "w") as f:
-        for _, family in all_families:
-            if len(family) == 1:
-                f.write(f"{family[0]}\n")
-            else:
-                base = " > ".join(family[:-1])
-                f.write(f"{base} / {family[-1]}\n")
+        for _, line in all_families:
+            f.write(line + "\n")
 
-    print("Saved to pokedex_by_family.txt")
+    print("\n✅ Saved to pokedex_by_family.txt")
 
 if __name__ == "__main__":
     main()
