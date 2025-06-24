@@ -108,6 +108,11 @@ def get_species_dex_number(species_url=None, species_name=None):
             return species_cache[species_name]
         normalized_name = normalize_species_name(species_name)
         url = f"{API_BASE}pokemon-species/{normalized_name}"
+
+        # Normalize to the base species name, even when looking up a form
+        if normalized_name != species_name:
+            species_cache[species_name] = get_species_dex_number(species_name=normalized_name)
+            return species_cache[species_name]
     elif species_url:
         species_name = species_url.rstrip('/').split("/")[-1]
         if species_name in species_cache:
@@ -125,7 +130,7 @@ def get_species_dex_number(species_url=None, species_name=None):
                 species_cache[species_name] = entry["entry_number"]
                 return entry["entry_number"]
     except Exception as e:
-        print(f"Warning: could not fetch dex number for {species_name}: {e}")
+        print(f"⚠️  Warning: using fallback Dex number for {species_name} via {normalized_name}")
     species_cache[species_name] = float("inf")
     return float("inf")
 
@@ -224,7 +229,7 @@ def main():
     with open(CACHE_FILE, "w") as f:
         json.dump(species_cache, f)
     with open(VARIANT_CACHE_FILE, "w") as f:
-        json.dump(variant_cache, f)
+        json.dump(variant_cache, f) 
     print("\n✅ Saved to pokedex_by_family.txt")
 
 if __name__ == "__main__":
