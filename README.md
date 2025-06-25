@@ -52,4 +52,4 @@ pokedex_by_family.txt
 
 ## Liscense
 
-No formal license is applied, but credit is appreciated!
+License: MIT

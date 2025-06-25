@@ -14,7 +14,7 @@ Features:
 
 Author: Cameron Ottley
 Repository: https://github.com/ottles91/PokeFamilyDex
-License: MIT (or your chosen license)
+License: MIT 
 """
 
 import requests
