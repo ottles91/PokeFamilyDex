@@ -14,11 +14,13 @@ This Python script uses the [PokéAPI](https://pokeapi.co/) to generate a Nation
 
 ## Example Output
 
-`Meowth (Alola)  
-Meowth (Galar)  
-Persian  
-Persian (Alola)  
-Perrserker`
+```
+Meowth (Alola)
+Meowth (Galar)
+Persian
+Persian (Alola)
+Perrserker
+```
 
 ## Requirements
 
